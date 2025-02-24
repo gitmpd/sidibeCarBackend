@@ -49,51 +49,108 @@ app.post("/api/clicks", async (req, res) => {
         res.status(500).json({ message: 'Erreur du serveur.', error: err.message });
     }
   });
-  app.get('/api/clicks/stats', async (req, res) => {
-    try {
+  // app.get('/api/clicks/stats', async (req, res) => {
+  //   try {
+  //     // Comptage des clics par jour
+  //     const dailyClicks = await Click.aggregate([
+  //       {
+  //         $project: {
+  //           date: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
+  //         }
+  //       },
+  //       {
+  //         $group: {
+  //           _id: "$date",
+  //           totalClicks: { $sum: 1 }
+  //         }
+  //       },
+  //       { $sort: { _id: -1 } }  // Trier par date
+  //     ]);
+  
+  //     // Trouver la voiture la plus cliquée
+  //     const mostClickedCar = await Click.aggregate([
+  //       {
+  //         $group: {
+  //           _id: "$carId",
+  //           clicks: { $sum: 1 }
+  //         }
+  //       },
+  //       { $sort: { clicks: -1 } },
+  //       { $limit: 1 }
+  //     ]);
+  
+  //     const car = await Car.findById(mostClickedCar[0]._id);
+  
+  //     res.json({
+  //       dailyClicks,
+  //       mostClickedCar: {
+  //         car: car,
+  //         clicks: mostClickedCar[0].clicks
+  //       }
+  //     });
+  //   } catch (error) {
+  //     console.error("Erreur lors de la récupération des statistiques : ", error);
+  //     res.status(500).send("Erreur serveur");
+  //   }
+  // });
+// Servir les fichiers statiques du dossier public
+app.get('/api/clicks/stats', async (req, res) => {
+  try {
+      // Obtenir la date du jour au format "YYYY-MM-DD"
+      const today = new Date().toISOString().split("T")[0];
+
       // Comptage des clics par jour
       const dailyClicks = await Click.aggregate([
-        {
-          $project: {
-            date: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
-          }
-        },
-        {
-          $group: {
-            _id: "$date",
-            totalClicks: { $sum: 1 }
-          }
-        },
-        { $sort: { _id: -1 } }  // Trier par date
+          {
+              $project: {
+                  date: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
+              }
+          },
+          {
+              $group: {
+                  _id: "$date",
+                  totalClicks: { $sum: 1 }
+              }
+          },
+          { $sort: { _id: -1 } }  // Trier par date décroissante
       ]);
-  
-      // Trouver la voiture la plus cliquée
-      const mostClickedCar = await Click.aggregate([
-        {
-          $group: {
-            _id: "$carId",
-            clicks: { $sum: 1 }
-          }
-        },
-        { $sort: { clicks: -1 } },
-        { $limit: 1 }
+
+      // 📌 **NOUVEAU : Trouver la voiture la plus cliquée aujourd’hui**
+      const mostClickedCarToday = await Click.aggregate([
+          {
+              $project: {
+                  date: { $dateToString: { format: "%Y-%m-%d", date: "$timestamp" } },
+                  carId: 1
+              }
+          },
+          { $match: { date: today } }, // 🛑 Filtrer uniquement les clics du jour
+          {
+              $group: {
+                  _id: "$carId",
+                  clicks: { $sum: 1 }
+              }
+          },
+          { $sort: { clicks: -1 } },
+          { $limit: 1 }
       ]);
-  
-      const car = await Car.findById(mostClickedCar[0]._id);
-  
+
+      let mostClickedCar = null;
+      if (mostClickedCarToday.length > 0) {
+          mostClickedCar = await Car.findById(mostClickedCarToday[0]._id);
+      }
+
       res.json({
-        dailyClicks,
-        mostClickedCar: {
-          car: car,
-          clicks: mostClickedCar[0].clicks
-        }
+          dailyClicks,
+          mostClickedCar: mostClickedCar
+              ? { car: mostClickedCar, clicks: mostClickedCarToday[0].clicks }
+              : null
       });
-    } catch (error) {
+  } catch (error) {
       console.error("Erreur lors de la récupération des statistiques : ", error);
       res.status(500).send("Erreur serveur");
-    }
-  });
-// Servir les fichiers statiques du dossier public
+  }
+});
+
 app.use('/img', express.static(path.join(__dirname, 'public/img')));
 app.use('/uploads', express.static(uploadDir)); 
 app.use(express.json());
